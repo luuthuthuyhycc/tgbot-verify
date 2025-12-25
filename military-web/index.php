@@ -9,12 +9,19 @@ define('MILITARY_VERIFY', true);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/VeteranDataReader.php';
 require_once __DIR__ . '/includes/SheerIDVerifier.php';
+require_once __DIR__ . '/includes/EmailReader.php';
 
 // Khởi tạo data reader và lấy record ngẫu nhiên
 $dataReader = new VeteranDataReader();
 $totalRecords = $dataReader->getTotalRecords();
 $fileStats = $dataReader->getFileStats();
 $veteranRecord = $dataReader->getRandomRecord();
+
+// Giá trị mặc định từ config (để hiển thị placeholder)
+$defaultImapHost = defined('IMAP_HOST') ? IMAP_HOST : 'imap.gmail.com';
+$defaultImapPort = defined('IMAP_PORT') ? IMAP_PORT : 993;
+$defaultImapUsername = defined('IMAP_USERNAME') ? IMAP_USERNAME : '';
+$defaultEmailDomain = defined('EMAIL_DOMAIN') ? EMAIL_DOMAIN : '';
 
 // Chuẩn bị dữ liệu veteran nếu có
 $veteranData = null;
@@ -251,6 +258,141 @@ $totalFiles = count($fileStats);
         .modal-btn-no:hover {
             background: #cbd5e0;
         }
+        /* Auto Email Section */
+        .auto-email-info {
+            padding: 10px;
+            background: rgba(47, 133, 90, 0.1);
+            border-radius: 8px;
+        }
+        #email-input-group.hidden-by-auto {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        #email-input-group.hidden-by-auto input {
+            background: #e2e8f0;
+        }
+        /* IMAP Config Panel */
+        .imap-config-panel {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f0fff4;
+            border: 1px solid #9ae6b4;
+            border-radius: 8px;
+        }
+        .imap-config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .form-group.compact {
+            margin-bottom: 0;
+        }
+        .form-group.compact label {
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+        }
+        .form-group.compact .form-control {
+            padding: 8px 12px;
+            font-size: 0.9rem;
+        }
+        .form-group.compact .hint {
+            font-size: 0.75rem;
+            margin-top: 3px;
+        }
+        .auto-email-preview {
+            padding: 10px;
+            background: rgba(47, 133, 90, 0.15);
+            border-radius: 8px;
+            text-align: center;
+        }
+        #auto-verify-section.active {
+            background: #f0fff4;
+            border-color: #9ae6b4;
+        }
+        /* IMAP Action Buttons */
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+            border-radius: 6px;
+        }
+        .btn-secondary {
+            background: #718096;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+        .btn-secondary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .btn-info {
+            background: #4299e1;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-info:hover {
+            background: #3182ce;
+        }
+        .imap-result-success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .imap-result-error {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        /* Help Modal */
+        .help-modal-content {
+            max-height: 70vh;
+            overflow-y: auto;
+            text-align: left;
+        }
+        .help-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f7fafc;
+            border-radius: 8px;
+        }
+        .help-section h4 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .help-section ol, .help-section ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .help-section li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+        .help-section code {
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+        }
+        .help-section a {
+            color: #3182ce;
+            text-decoration: none;
+        }
+        .help-section a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -305,14 +447,13 @@ $totalFiles = count($fileStats);
                     </div>
 
                     <!-- Email Input -->
-                    <div class="form-group">
+                    <div class="form-group" id="email-input-group">
                         <label for="email">📧 Email <span style="color: #c53030">*</span></label>
                         <input type="email" 
                                id="email" 
                                name="email" 
                                class="form-control" 
-                               placeholder="your.email@gmail.com"
-                               required>
+                               placeholder="your.email@gmail.com">
                         <p class="hint">Email sẽ được sử dụng để nhận kết quả xác minh</p>
                     </div>
 
@@ -334,6 +475,96 @@ $totalFiles = count($fileStats);
                                 📊 Số proxy: <strong id="proxy-count-number">0</strong>
                             </div>
                             <p class="hint" style="margin-top: 5px;">Format: Username:Password@Host:Port hoặc Host:Port:Username:Password</p>
+                        </div>
+                    </div>
+
+                    <!-- Auto Email Verify Section -->
+                    <div class="proxy-section" id="auto-verify-section" style="margin-top: 15px;">
+                        <label class="proxy-checkbox-wrapper">
+                            <input type="checkbox" id="auto_verify_email" name="auto_verify_email" value="1">
+                            <span>🤖 Auto Verify (Tự động xác minh email)</span>
+                        </label>
+                        
+                        <!-- IMAP Configuration Panel -->
+                        <div id="imap-config-panel" class="imap-config-panel" style="display: none;">
+                            <p class="hint" style="margin: 10px 0; color: #2f855a;">
+                                💡 Để trống các trường để sử dụng cấu hình mặc định từ config.php
+                            </p>
+                            
+                            <div class="imap-config-grid">
+                                <!-- Email Domain -->
+                                <div class="form-group compact">
+                                    <label for="imap_email_domain">📧 Email Domain</label>
+                                    <input type="text" 
+                                           id="imap_email_domain" 
+                                           name="imap_email_domain" 
+                                           class="form-control"
+                                           placeholder="<?= htmlspecialchars($defaultEmailDomain ?: 'yourdomain.com') ?>">
+                                    <p class="hint">Domain để tạo email random (vd: mydomain.com)</p>
+                                </div>
+
+                                <!-- IMAP Host -->
+                                <div class="form-group compact">
+                                    <label for="imap_host">🖥️ IMAP Host</label>
+                                    <input type="text" 
+                                           id="imap_host" 
+                                           name="imap_host" 
+                                           class="form-control"
+                                           placeholder="<?= htmlspecialchars($defaultImapHost) ?>">
+                                </div>
+
+                                <!-- IMAP Port -->
+                                <div class="form-group compact">
+                                    <label for="imap_port">🔌 IMAP Port</label>
+                                    <input type="number" 
+                                           id="imap_port" 
+                                           name="imap_port" 
+                                           class="form-control"
+                                           placeholder="<?= $defaultImapPort ?>">
+                                </div>
+
+                                <!-- IMAP Username -->
+                                <div class="form-group compact">
+                                    <label for="imap_username">👤 IMAP Username</label>
+                                    <input type="text" 
+                                           id="imap_username" 
+                                           name="imap_username" 
+                                           class="form-control"
+                                           placeholder="<?= htmlspecialchars($defaultImapUsername ?: 'your-email@gmail.com') ?>">
+                                </div>
+
+                                <!-- IMAP Password -->
+                                <div class="form-group compact">
+                                    <label for="imap_password">🔑 IMAP Password</label>
+                                    <input type="password" 
+                                           id="imap_password" 
+                                           name="imap_password" 
+                                           class="form-control"
+                                           placeholder="App Password">
+                                    <p class="hint">Với Gmail, sử dụng App Password</p>
+                                </div>
+                            </div>
+
+                            <div id="auto-email-preview" class="auto-email-preview" style="margin-top: 15px; display: none;">
+                                <p style="margin: 0; color: #2f855a; font-size: 0.9rem;">
+                                    📧 Email sẽ được tạo: <strong id="generated-email-display">-</strong>
+                                </p>
+                            </div>
+
+                            <!-- IMAP Action Buttons -->
+                            <div class="imap-actions" style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                                <button type="button" id="btn-check-imap" class="btn btn-secondary btn-sm">
+                                    🔍 Kiểm tra IMAP
+                                </button>
+                                <button type="button" id="btn-imap-help" class="btn btn-info btn-sm">
+                                    ❓ Hướng dẫn
+                                </button>
+                            </div>
+                            
+                            <!-- IMAP Check Result -->
+                            <div id="imap-check-result" style="margin-top: 10px; display: none;"></div>
+
+                            <input type="hidden" id="generated_email" name="generated_email" value="">
                         </div>
                     </div>
 
@@ -501,6 +732,68 @@ $totalFiles = count($fileStats);
         </div>
     </div>
 
+    <!-- Modal for IMAP Help -->
+    <div id="imap-help-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width: 600px; text-align: left;">
+            <div class="modal-icon">📧</div>
+            <div class="modal-title" style="text-align: center;">Hướng dẫn cấu hình IMAP</div>
+            <div class="help-modal-content">
+                <!-- Gmail Section -->
+                <div class="help-section">
+                    <h4>📨 Gmail (Khuyến nghị)</h4>
+                    <ol>
+                        <li>Đăng nhập vào <a href="https://mail.google.com" target="_blank">Gmail</a></li>
+                        <li>Vào <strong>Settings</strong> → <strong>See all settings</strong></li>
+                        <li>Tab <strong>Forwarding and POP/IMAP</strong> → Enable IMAP</li>
+                        <li>Bật <strong>2-Step Verification</strong> tại <a href="https://myaccount.google.com/security" target="_blank">Google Security</a></li>
+                        <li>Tạo <strong>App Password</strong>:
+                            <ul>
+                                <li>Vào <a href="https://myaccount.google.com/apppasswords" target="_blank">App Passwords</a></li>
+                                <li>Chọn app: <code>Mail</code>, device: <code>Other</code></li>
+                                <li>Copy mật khẩu 16 ký tự (không có dấu cách)</li>
+                            </ul>
+                        </li>
+                    </ol>
+                    <p style="margin-top: 10px;"><strong>Thông tin IMAP Gmail:</strong></p>
+                    <ul>
+                        <li>Host: <code>imap.gmail.com</code></li>
+                        <li>Port: <code>993</code></li>
+                        <li>Username: <code>your-email@gmail.com</code></li>
+                        <li>Password: <code>App Password (16 ký tự)</code></li>
+                    </ul>
+                </div>
+
+                <!-- Cloudflare Email Routing -->
+                <div class="help-section">
+                    <h4>☁️ Cloudflare Email Routing (Catch-all)</h4>
+                    <ol>
+                        <li>Đăng nhập <a href="https://dash.cloudflare.com" target="_blank">Cloudflare Dashboard</a></li>
+                        <li>Chọn domain → <strong>Email</strong> → <strong>Email Routing</strong></li>
+                        <li>Enable Email Routing nếu chưa bật</li>
+                        <li>Tab <strong>Routing Rules</strong> → <strong>Catch-all address</strong></li>
+                        <li>Set action: <strong>Send to an email</strong> → nhập Gmail của bạn</li>
+                        <li>Verify email đích nếu cần</li>
+                    </ol>
+                    <p style="margin-top: 10px;"><strong>Kết quả:</strong> Tất cả email gửi đến <code>*@yourdomain.com</code> sẽ được forward đến Gmail</p>
+                </div>
+
+                <!-- Email Domain -->
+                <div class="help-section">
+                    <h4>🌐 Email Domain</h4>
+                    <p>Đây là domain để tạo email random. Ví dụ:</p>
+                    <ul>
+                        <li>Domain: <code>mydomain.com</code></li>
+                        <li>Email tạo ra: <code>v1a2b3c41735123456@mydomain.com</code></li>
+                    </ul>
+                    <p style="margin-top: 10px;"><strong>Lưu ý:</strong> Cần setup Cloudflare Email Routing để forward email về Gmail.</p>
+                </div>
+            </div>
+            <div class="modal-buttons" style="margin-top: 20px; justify-content: center;">
+                <button type="button" class="modal-btn modal-btn-yes" id="imap-help-close">Đã hiểu</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const form = document.getElementById('verify-form');
@@ -518,6 +811,162 @@ $totalFiles = count($fileStats);
             const proxyModal = document.getElementById('proxy-modal');
             const modalBtnYes = document.getElementById('modal-btn-yes');
             const modalBtnNo = document.getElementById('modal-btn-no');
+            
+            // Auto email elements
+            const autoVerifyCheckbox = document.getElementById('auto_verify_email');
+            const autoVerifySection = document.getElementById('auto-verify-section');
+            const imapConfigPanel = document.getElementById('imap-config-panel');
+            const emailInputGroup = document.getElementById('email-input-group');
+            const emailInput = document.getElementById('email');
+            const generatedEmailInput = document.getElementById('generated_email');
+            const generatedEmailDisplay = document.getElementById('generated-email-display');
+            const autoEmailPreview = document.getElementById('auto-email-preview');
+            
+            // IMAP form elements
+            const imapEmailDomain = document.getElementById('imap_email_domain');
+            const imapHost = document.getElementById('imap_host');
+            const imapPort = document.getElementById('imap_port');
+            const imapUsername = document.getElementById('imap_username');
+            const imapPassword = document.getElementById('imap_password');
+            
+            // Default values from config
+            const defaultEmailDomain = '<?= addslashes($defaultEmailDomain) ?>';
+            
+            // Veteran data for email generation
+            const veteranFirstName = '<?= addslashes($veteranData['first_name'] ?? '') ?>';
+            const veteranLastName = '<?= addslashes($veteranData['last_name'] ?? '') ?>';
+            
+            // Generate email from name + random number
+            function generateEmailFromName(firstName, lastName, domain) {
+                // Chuẩn hóa tên: lowercase, loại bỏ ký tự đặc biệt
+                firstName = firstName.toLowerCase().replace(/[^a-z]/g, '');
+                lastName = lastName.toLowerCase().replace(/[^a-z]/g, '');
+                
+                // Random 3-4 số
+                const randomNum = Math.floor(Math.random() * 9000) + 100;
+                
+                return firstName + lastName + randomNum + '@' + domain;
+            }
+            
+            // Update generated email preview
+            function updateGeneratedEmail() {
+                const domain = imapEmailDomain.value.trim() || defaultEmailDomain;
+                if (domain && domain !== 'yourdomain.com' && veteranFirstName && veteranLastName) {
+                    const email = generateEmailFromName(veteranFirstName, veteranLastName, domain);
+                    generatedEmailInput.value = email;
+                    generatedEmailDisplay.textContent = email;
+                    emailInput.value = email;
+                    autoEmailPreview.style.display = 'block';
+                } else {
+                    generatedEmailInput.value = '';
+                    generatedEmailDisplay.textContent = '-';
+                    autoEmailPreview.style.display = 'none';
+                }
+            }
+            
+            // Toggle auto verify
+            if (autoVerifyCheckbox) {
+                autoVerifyCheckbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        imapConfigPanel.style.display = 'block';
+                        autoVerifySection.classList.add('active');
+                        emailInputGroup.classList.add('hidden-by-auto');
+                        updateGeneratedEmail();
+                    } else {
+                        imapConfigPanel.style.display = 'none';
+                        autoVerifySection.classList.remove('active');
+                        emailInputGroup.classList.remove('hidden-by-auto');
+                        emailInput.value = '';
+                        generatedEmailInput.value = '';
+                    }
+                });
+                
+                // Update email when domain changes
+                imapEmailDomain.addEventListener('input', updateGeneratedEmail);
+            }
+            
+            // IMAP Check Button
+            const btnCheckImap = document.getElementById('btn-check-imap');
+            const imapCheckResult = document.getElementById('imap-check-result');
+            
+            if (btnCheckImap) {
+                btnCheckImap.addEventListener('click', async function() {
+                    const host = imapHost.value.trim() || imapHost.placeholder;
+                    const port = imapPort.value.trim() || imapPort.placeholder;
+                    const username = imapUsername.value.trim() || imapUsername.placeholder;
+                    const password = imapPassword.value.trim();
+                    
+                    // Validate
+                    if (!password && !imapPassword.placeholder.includes('***')) {
+                        imapCheckResult.style.display = 'block';
+                        imapCheckResult.className = 'imap-result-error';
+                        imapCheckResult.innerHTML = '❌ Vui lòng nhập IMAP Password';
+                        return;
+                    }
+                    
+                    btnCheckImap.disabled = true;
+                    btnCheckImap.innerHTML = '⏳ Đang kiểm tra...';
+                    imapCheckResult.style.display = 'none';
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('action', 'check_imap');
+                        formData.append('host', host);
+                        formData.append('port', port);
+                        formData.append('username', username);
+                        formData.append('password', password);
+                        
+                        const response = await fetch('api/check_imap.php', {
+                            method: 'POST',
+                            body: formData
+                        });
+                        
+                        const data = await response.json();
+                        
+                        imapCheckResult.style.display = 'block';
+                        if (data.success) {
+                            imapCheckResult.className = 'imap-result-success';
+                            imapCheckResult.innerHTML = '✅ ' + data.message;
+                        } else {
+                            imapCheckResult.className = 'imap-result-error';
+                            imapCheckResult.innerHTML = '❌ ' + data.message;
+                        }
+                    } catch (error) {
+                        imapCheckResult.style.display = 'block';
+                        imapCheckResult.className = 'imap-result-error';
+                        imapCheckResult.innerHTML = '❌ Lỗi kết nối: ' + error.message;
+                    }
+                    
+                    btnCheckImap.disabled = false;
+                    btnCheckImap.innerHTML = '🔍 Kiểm tra IMAP';
+                });
+            }
+            
+            // IMAP Help Modal
+            const btnImapHelp = document.getElementById('btn-imap-help');
+            const imapHelpModal = document.getElementById('imap-help-modal');
+            const imapHelpClose = document.getElementById('imap-help-close');
+            
+            if (btnImapHelp) {
+                btnImapHelp.addEventListener('click', function() {
+                    imapHelpModal.classList.add('show');
+                });
+            }
+            
+            if (imapHelpClose) {
+                imapHelpClose.addEventListener('click', function() {
+                    imapHelpModal.classList.remove('show');
+                });
+            }
+            
+            // Close modal when clicking outside
+            if (imapHelpModal) {
+                imapHelpModal.addEventListener('click', function(e) {
+                    if (e.target === imapHelpModal) {
+                        imapHelpModal.classList.remove('show');
+                    }
+                });
+            }
             
             // Load saved proxy from localStorage
             const savedProxies = localStorage.getItem('military_proxies');
@@ -580,6 +1029,7 @@ $totalFiles = count($fileStats);
             form.addEventListener('submit', function(e) {
                 const url = document.getElementById('sheerid_url').value;
                 const email = document.getElementById('email').value;
+                const isAutoEmail = autoVerifyCheckbox && autoVerifyCheckbox.checked;
                 
                 if (!url.includes('sheerid.com') || !url.includes('verificationId')) {
                     e.preventDefault();
@@ -587,10 +1037,22 @@ $totalFiles = count($fileStats);
                     return;
                 }
                 
-                if (!email || !email.includes('@')) {
-                    e.preventDefault();
-                    showAlert('error', 'Vui lòng nhập email hợp lệ.');
-                    return;
+                // Validate email
+                if (isAutoEmail) {
+                    const domain = imapEmailDomain.value.trim() || defaultEmailDomain;
+                    if (!domain || domain === 'yourdomain.com') {
+                        e.preventDefault();
+                        showAlert('error', 'Vui lòng nhập Email Domain hoặc cấu hình trong config.php');
+                        return;
+                    }
+                    // Regenerate email trước khi submit
+                    updateGeneratedEmail();
+                } else {
+                    if (!email || !email.includes('@')) {
+                        e.preventDefault();
+                        showAlert('error', 'Vui lòng nhập email hợp lệ.');
+                        return;
+                    }
                 }
                 
                 // Check proxy if enabled
@@ -601,6 +1063,11 @@ $totalFiles = count($fileStats);
                         showAlert('error', 'Vui lòng nhập ít nhất một proxy hoặc bỏ chọn "Sử dụng Proxy".');
                         return;
                     }
+                }
+                
+                // Show loading with appropriate message
+                if (isAutoEmail) {
+                    btnLoading.innerHTML = '<span class="spinner"></span> Đang xác minh tự động...';
                 }
 
                 btnText.style.display = 'none';

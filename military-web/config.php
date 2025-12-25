@@ -95,3 +95,28 @@ define('DATA_VETERAN_DIR', __DIR__ . '/data/');
 
 // Valid service branch IDs only
 $VALID_SERVICE_BRANCHES = ['AR', 'AF', 'NA', 'MC', 'CG', 'SF'];
+
+// ============================================
+// EMAIL CONFIGURATION (for auto email verification)
+// ============================================
+
+// IMAP Settings (Gmail example)
+// Để sử dụng với Gmail:
+// 1. Bật IMAP trong Gmail Settings > Forwarding and POP/IMAP
+// 2. Tạo App Password tại: https://myaccount.google.com/apppasswords
+// 3. Bật 2FA trước khi tạo App Password
+define('IMAP_HOST', 'imap.gmail.com');
+define('IMAP_PORT', 993);
+define('IMAP_USERNAME', 'fonos@traitimchoem.org');  // Gmail của bạn
+define('IMAP_PASSWORD', 'mfgouqxvthlyfmte');      // App Password (16 ký tự, không có dấu cách)
+
+// Domain email riêng (dùng với Cloudflare Email Routing)
+// Email sẽ được tạo dạng: random123@yourdomain.com
+// Cloudflare sẽ forward tất cả email đến Gmail ở trên
+define('EMAIL_DOMAIN', 'yourdomain.com');
+
+// Auto verification settings
+define('EMAIL_WAIT_TIMEOUT', 60);      // Thời gian chờ email tối đa (giây)
+define('EMAIL_CHECK_INTERVAL', 5);     // Khoảng thời gian giữa các lần check (giây)
+define('AUTO_VERIFY_ENABLED', false);  // Bật/tắt tính năng tự động xác minh email
+

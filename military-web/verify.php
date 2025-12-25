@@ -40,6 +40,24 @@ $useProxy = isset($_POST['use_proxy']) && $_POST['use_proxy'] == '1';
 $proxyList = $_POST['proxy_list'] ?? '';
 $skipProxy = isset($_POST['skip_proxy']) && $_POST['skip_proxy'] == '1';
 
+// Auto email verification mode
+$autoVerifyEmail = isset($_POST['auto_verify_email']) && $_POST['auto_verify_email'] == '1';
+$generatedEmail = $_POST['generated_email'] ?? '';
+
+// IMAP Configuration từ form (fallback về config.php nếu trống)
+$imapConfig = [
+    'host' => !empty($_POST['imap_host']) ? trim($_POST['imap_host']) : (defined('IMAP_HOST') ? IMAP_HOST : 'imap.gmail.com'),
+    'port' => !empty($_POST['imap_port']) ? intval($_POST['imap_port']) : (defined('IMAP_PORT') ? IMAP_PORT : 993),
+    'username' => !empty($_POST['imap_username']) ? trim($_POST['imap_username']) : (defined('IMAP_USERNAME') ? IMAP_USERNAME : ''),
+    'password' => !empty($_POST['imap_password']) ? trim($_POST['imap_password']) : (defined('IMAP_PASSWORD') ? IMAP_PASSWORD : ''),
+    'email_domain' => !empty($_POST['imap_email_domain']) ? trim($_POST['imap_email_domain']) : (defined('EMAIL_DOMAIN') ? EMAIL_DOMAIN : '')
+];
+
+// Nếu dùng auto verify, sử dụng email được generate
+if ($autoVerifyEmail && !empty($generatedEmail)) {
+    $email = $generatedEmail;
+}
+
 // Validate URL
 $verificationId = SheerIDVerifier::parseVerificationId($sheeridUrl);
 if (!$verificationId) {
@@ -237,7 +255,15 @@ endif;
 // Thực hiện xác minh (nếu không bị chặn bởi proxy warning)
 if (!isset($error) && !$noProxyAvailable) {
     $verifier = new SheerIDVerifier($verificationId, $proxy, $sheeridUrl);
-    $result = $verifier->verify($personalInfo, $organization, $militaryStatus);
+    
+    // Chọn phương thức xác minh
+    if ($autoVerifyEmail) {
+        // Tự động xác minh bao gồm đọc email và click link
+        $result = $verifier->verifyWithEmailConfirmation($personalInfo, $organization, $militaryStatus, true, $imapConfig);
+    } else {
+        // Xác minh thông thường (không tự động đọc email)
+        $result = $verifier->verify($personalInfo, $organization, $militaryStatus);
+    }
     
     // XÓA RECORD SAU KHI XÁC MINH (dù thành công hay thất bại)
     // Sử dụng source_file để xóa đúng file chứa record
@@ -451,6 +477,44 @@ $orgIcons = [
                 </div>
                 <?php endif; ?>
 
+                <!-- Auto Email Verification Status -->
+                <?php if ($autoVerifyEmail && AUTO_VERIFY_ENABLED): ?>
+                <div class="result-box" style="margin-top: 15px; background: #ebf8ff; border: 1px solid #90cdf4;">
+                    <h4 style="margin-bottom: 10px;">📧 Tự động xác minh Email</h4>
+                    <?php if (!empty($result['email_received'])): ?>
+                    <div class="result-item">
+                        <span class="label">Email nhận:</span>
+                        <span class="value">✅ Đã nhận email từ SheerID</span>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <?php if (!empty($result['manual_verification_required']) && !empty($result['verification_link'])): ?>
+                    <!-- Hiển thị link để user click thủ công -->
+                    <div style="margin-top: 15px; padding: 15px; background: #fefcbf; border: 2px solid #ecc94b; border-radius: 8px;">
+                        <h4 style="color: #744210; margin-bottom: 10px;">🔗 Click vào link bên dưới để hoàn tất xác minh:</h4>
+                        <a href="<?= htmlspecialchars($result['verification_link']) ?>" 
+                           target="_blank" 
+                           class="btn btn-success" 
+                           style="display: block; text-align: center; padding: 15px 20px; font-size: 1.1rem; margin-bottom: 10px;">
+                            ✅ Click để xác minh email
+                        </a>
+                        <div style="background: #2d3748; color: #e2e8f0; padding: 10px; border-radius: 6px; font-family: monospace; font-size: 0.75rem; word-break: break-all; margin-top: 10px;">
+                            <?= htmlspecialchars($result['verification_link']) ?>
+                        </div>
+                        <p style="color: #744210; font-size: 0.85rem; margin-top: 10px;">
+                            💡 <strong>Lưu ý:</strong> Sau khi click và xác minh thành công, bạn sẽ được chuyển đến trang đích.
+                        </p>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($result['email_error'])): ?>
+                    <div style="margin-top: 10px; padding: 10px; background: #fed7d7; border-radius: 6px; color: #742a2a;">
+                        ⚠️ <?= htmlspecialchars($result['email_error']) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php endif; ?>
+
                 <!-- Personal Info Used -->
                 <div class="result-box" style="margin-top: 20px;">
                     <h3>👤 Thông tin đã sử dụng</h3>
@@ -505,13 +569,27 @@ $orgIcons = [
                             <pre><?= htmlspecialchars(json_encode($result['step2_response'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre>
                         </div>
                         <?php endif; ?>
+
+                        <?php if (!empty($result['email_token'])): ?>
+                        <h4 style="margin-top: 15px;">Email Token:</h4>
+                        <code><?= htmlspecialchars($result['email_token']) ?></code>
+                        <?php endif; ?>
+
+                        <?php if (!empty($result['verification_link'])): ?>
+                        <h4 style="margin-top: 15px;">Verification Link:</h4>
+                        <code style="word-break: break-all;"><?= htmlspecialchars($result['verification_link']) ?></code>
+                        <?php endif; ?>
                     </div>
                 </details>
 
                 <!-- Action Buttons -->
                 <div style="margin-top: 30px; display: flex; gap: 15px; flex-wrap: wrap;">
                     <a href="index.php" class="btn btn-primary">← Xác minh tiếp</a>
-                    <?php if ($result['success'] && !empty($result['redirect_url'])): ?>
+                    <?php if (!empty($result['verification_link'])): ?>
+                    <a href="<?= htmlspecialchars($result['verification_link']) ?>" target="_blank" class="btn btn-success">
+                        ✅ Click để xác minh email
+                    </a>
+                    <?php elseif ($result['success'] && !empty($result['redirect_url'])): ?>
                     <a href="<?= htmlspecialchars($result['redirect_url']) ?>" target="_blank" class="btn btn-success">
                         🔗 Tiếp tục đến ChatGPT
                     </a>

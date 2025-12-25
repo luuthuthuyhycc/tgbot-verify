@@ -314,4 +314,108 @@ class SheerIDVerifier
     {
         return $this->lastResponse;
     }
+
+    /**
+     * Thực hiện xác minh đầy đủ bao gồm tự động xác nhận email
+     * 
+     * @param array $personalInfo Thông tin cá nhân
+     * @param array|null $organization Đơn vị quân đội
+     * @param string $status Trạng thái quân nhân
+     * @param bool $autoConfirmEmail Tự động xác nhận email
+     * @param array $imapConfig IMAP configuration ['host', 'port', 'username', 'password', 'email_domain']
+     * @return array Kết quả xác minh
+     */
+    public function verifyWithEmailConfirmation(
+        ?array $personalInfo = null,
+        ?array $organization = null,
+        string $status = 'VETERAN',
+        bool $autoConfirmEmail = true,
+        array $imapConfig = []
+    ): array {
+        // Bước 1-2: Gửi thông tin xác minh
+        $result = $this->verify($personalInfo, $organization, $status);
+        
+        // Nếu không thành công hoặc không cần xác nhận email
+        if (!$result['success'] || !$autoConfirmEmail) {
+            return $result;
+        }
+
+        // Nếu cần xác nhận email
+        if (!empty($result['pending']) || !empty($result['email_verification_required'])) {
+            $result['step'] = 'waitingForEmail';
+            $result['message'] = 'Đang chờ email xác nhận...';
+            
+            // Đọc email với config từ form
+            require_once __DIR__ . '/EmailReader.php';
+            $emailReader = new EmailReader(
+                $imapConfig['host'] ?? '',
+                $imapConfig['port'] ?? 993,
+                $imapConfig['username'] ?? '',
+                $imapConfig['password'] ?? '',
+                $imapConfig['email_domain'] ?? ''
+            );
+            
+            // Nếu PHP IMAP có, thử kết nối trước
+            if (EmailReader::isImapAvailable()) {
+                if (!$emailReader->connect()) {
+                    $result['email_error'] = $emailReader->getLastError();
+                    $result['message'] = 'Gửi thông tin thành công nhưng không thể kết nối email: ' . $emailReader->getLastError();
+                    return $result;
+                }
+            }
+
+            $email = $result['personal_info']['email'];
+            
+            // Lấy timeout từ config nếu có
+            $waitTimeout = defined('EMAIL_WAIT_TIMEOUT') ? EMAIL_WAIT_TIMEOUT : 60;
+            $checkInterval = defined('EMAIL_CHECK_INTERVAL') ? EMAIL_CHECK_INTERVAL : 5;
+            
+            $emailData = $emailReader->waitForSheerIDEmail(
+                $email,
+                $waitTimeout,
+                $checkInterval
+            );
+
+            if ($emailData === null) {
+                $result['email_error'] = $emailReader->getLastError();
+                $result['message'] = 'Gửi thông tin thành công nhưng không nhận được email xác nhận trong thời gian chờ.';
+                $emailReader->disconnect();
+                return $result;
+            }
+
+            $result['step'] = 'parsingEmail';
+            $result['email_received'] = true;
+
+            // Parse emailToken - kiểm tra xem Python fallback đã trả về chưa
+            $emailToken = $emailData['emailToken'] ?? null;
+            
+            // Nếu chưa có, parse từ body
+            if ($emailToken === null) {
+                $emailToken = EmailReader::parseEmailToken($emailData['body']);
+            }
+
+            if ($emailToken === null) {
+                $result['email_error'] = 'Không tìm thấy emailToken trong email';
+                $result['message'] = 'Nhận được email nhưng không tìm thấy emailToken.';
+                $emailReader->disconnect();
+                return $result;
+            }
+
+            // Tạo link xác nhận từ URL gốc + emailToken
+            $verificationLink = EmailReader::buildVerificationLink($this->originalUrl, $emailToken);
+
+            $result['step'] = 'emailLinkReady';
+            $result['email_token'] = $emailToken;
+            $result['verification_link'] = $verificationLink;
+            
+            $emailReader->disconnect();
+
+            // Thành công - trả về link cho user click thủ công
+            $result['success'] = true;
+            $result['message'] = 'Đã nhận được email xác nhận! Vui lòng click vào link bên dưới để hoàn tất xác minh.';
+            $result['manual_verification_required'] = true;
+        }
+
+        return $result;
+    }
 }
