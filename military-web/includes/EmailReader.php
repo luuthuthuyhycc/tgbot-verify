@@ -437,41 +437,45 @@ class EmailReader
     {
         // Debug: log original body length
         $originalLength = strlen($emailBody);
+        error_log("EmailReader::parseEmailToken - Original length: $originalLength");
         
-        // Decode quoted-printable
-        $emailBody = quoted_printable_decode($emailBody);
-        $emailBody = str_replace('=3D', '=', $emailBody);
-        $emailBody = preg_replace('/=\s*[\r\n]+/', '', $emailBody);
-        
-        // Decode HTML entities
-        $emailBody = html_entity_decode($emailBody, ENT_QUOTES | ENT_HTML5, 'UTF-8');
-        
-        // Debug: log để xem có tìm thấy emailToken không
-        error_log("EmailReader::parseEmailToken - Original length: $originalLength, Decoded length: " . strlen($emailBody));
-        
-        // Tìm emailToken - nhiều patterns (token có thể là số hoặc alphanumeric)
+        // Tìm emailToken TRƯỚC KHI decode - vì decode có thể làm hỏng
         $patterns = [
+            '/emailToken=([0-9]+)/i',                   // emailToken=261104 (số)
             '/emailToken=([a-zA-Z0-9_-]+)/i',           // emailToken=ABC123xyz
             '/emailToken%3D([a-zA-Z0-9_-]+)/i',         // URL encoded
-            '/email[_-]?token[=:]\s*([a-zA-Z0-9_-]+)/i', // email_token=ABC123
-            '/"emailToken"\s*:\s*"?([a-zA-Z0-9_-]+)"?/i', // JSON format
         ];
         
         foreach ($patterns as $pattern) {
             if (preg_match($pattern, $emailBody, $matches)) {
-                error_log("EmailReader::parseEmailToken - Found token: " . $matches[1]);
+                error_log("EmailReader::parseEmailToken - Found token (before decode): " . $matches[1]);
                 return $matches[1];
             }
         }
         
-        // Debug: log sample of body để xem nội dung
-        error_log("EmailReader::parseEmailToken - Token NOT found. Body sample: " . substr($emailBody, 0, 500));
+        // Nếu không tìm thấy, thử decode rồi tìm lại
+        $decoded = quoted_printable_decode($emailBody);
+        $decoded = str_replace('=3D', '=', $decoded);
+        $decoded = preg_replace('/=\s*[\r\n]+/', '', $decoded);
+        $decoded = html_entity_decode($decoded, ENT_QUOTES | ENT_HTML5, 'UTF-8');
         
-        // Tìm trong URL
+        error_log("EmailReader::parseEmailToken - Decoded length: " . strlen($decoded));
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $decoded, $matches)) {
+                error_log("EmailReader::parseEmailToken - Found token (after decode): " . $matches[1]);
+                return $matches[1];
+            }
+        }
+        
+        // Tìm trong URL pattern
         if (preg_match('/services\.sheerid\.com[^"\'>\s]*emailToken=([0-9]+)/i', $emailBody, $matches)) {
             error_log("EmailReader::parseEmailToken - Found in URL: " . $matches[1]);
             return $matches[1];
         }
+        
+        // Debug: log sample of body để xem nội dung
+        error_log("EmailReader::parseEmailToken - Token NOT found. Body sample: " . substr($emailBody, 0, 500));
         
         return null;
     }

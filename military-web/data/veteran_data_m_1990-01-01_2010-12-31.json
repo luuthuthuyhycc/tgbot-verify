@@ -1,7 +1,7 @@
 {
     "metadata": {
         "collected_at": "2025-12-25T20:13:28.708938",
-        "total_records": 881,
+        "total_records": 879,
         "fields": [
             "firstName",
             "lastName",
@@ -3059,12 +3059,6 @@
             "serviceBranchId": "AR"
         },
         {
-            "firstName": "IMMANUEL",
-            "lastName": "MICHAUX-BEY",
-            "date_of_birth": "1991-12-19",
-            "serviceBranchId": "MC"
-        },
-        {
             "firstName": "ADAM",
             "lastName": "MESCHER",
             "date_of_birth": "1992-02-08",
@@ -3747,12 +3741,6 @@
             "lastName": "MITCHELL",
             "date_of_birth": "1997-07-11",
             "serviceBranchId": "AR"
-        },
-        {
-            "firstName": "TREVOR",
-            "lastName": "MOHEIT",
-            "date_of_birth": "1993-12-02",
-            "serviceBranchId": "AF"
         },
         {
             "firstName": "SASHA",
